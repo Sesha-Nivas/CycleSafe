@@ -19,21 +19,24 @@ export default function App() {
     const timer = setTimeout(() => {
       setLoading(false);
       
-      // DEVELOPMENT MODE: Always clear login on page refresh
-      // Change VITE_DEV_MODE=true to 'false' in .env.local when deploying
+      // Check development mode setting
+      // IMPORTANT: On Vercel, set VITE_DEV_MODE=false to persist user login
       const isDevelopment = import.meta.env.VITE_DEV_MODE === 'true' || import.meta.env.DEV;
       
       if (isDevelopment) {
-        // During development: Always show login page
+        // During development: Always show login page on refresh
         db.clearCurrentUser();
         setIsAuthenticated(false);
+        console.log('Development mode: User data cleared on page load');
       } else {
-        // After deployment: Remember user login
+        // Production (Vercel): Remember user login
         const currentUser = db.getCurrentUser();
         if (currentUser) {
           setIsAuthenticated(true);
+          console.log('Production mode: User logged in -', currentUser.email);
         } else {
           setIsAuthenticated(false);
+          console.log('Production mode: No user found - showing login');
         }
       }
     }, 2000);

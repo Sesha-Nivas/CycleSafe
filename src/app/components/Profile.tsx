@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { User, MapPin, Award, TrendingUp, Calendar, Target, RefreshCw, Camera } from 'lucide-react';
+import { User, MapPin, Award, TrendingUp, Calendar, Target, RefreshCw, Camera, AlertCircle } from 'lucide-react';
 import { db } from '../../utils/database';
 import { getCurrentLocation } from '../../utils/rideTracking';
 
@@ -7,8 +7,20 @@ export default function Profile() {
   const [user, setUser] = useState(db.getCurrentUser());
   const [refreshing, setRefreshing] = useState(false);
   const [locationName, setLocationName] = useState('Loading...');
+  const [loading, setLoading] = useState(!user);
+  const [error, setError] = useState('');
 
   useEffect(() => {
+    // Ensure user data is loaded
+    const currentUser = db.getCurrentUser();
+    if (currentUser) {
+      setUser(currentUser);
+      setLoading(false);
+    } else {
+      setError('User data not found. Please log in again.');
+      setLoading(false);
+    }
+    
     fetchCurrentLocation();
   }, []);
 
@@ -16,34 +28,55 @@ export default function Profile() {
     try {
       const location = await getCurrentLocation();
       
+      if (!location || !location.lat || !location.lng) {
+        setLocationName('Location unavailable');
+        return;
+      }
+
       // Use Geocoding API to get location name
-      const response = await fetch(
-        `https://maps.googleapis.com/maps/api/geocode/json?latlng=${location.lat},${location.lng}&key=AIzaSyDsu8fka23JBnDfpohM3sREvFQUgj1wvd8`
-      );
-      
-      if (response.ok) {
-        const data = await response.json();
-        if (data.results && data.results.length > 0) {
-          // Get city and country from the results
-          const addressComponents = data.results[0].address_components;
-          let city = '';
-          let country = '';
-          
-          for (const component of addressComponents) {
-            if (component.types.includes('locality')) {
-              city = component.long_name;
-            }
-            if (component.types.includes('country')) {
-              country = component.short_name;
-            }
-          }
-          
-          setLocationName(city && country ? `${city}, ${country}` : data.results[0].formatted_address);
+      try {
+        const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
+        if (!apiKey) {
+          console.warn('Google Maps API key not configured');
+          setLocationName(`${location.lat.toFixed(2)}, ${location.lng.toFixed(2)}`);
+          return;
         }
+        
+        const response = await fetch(
+          `https://maps.googleapis.com/maps/api/geocode/json?latlng=${location.lat},${location.lng}&key=${apiKey}`
+        );
+        
+        if (response.ok) {
+          const data = await response.json();
+          if (data.results && data.results.length > 0) {
+            // Get city and country from the results
+            const addressComponents = data.results[0].address_components;
+            let city = '';
+            let country = '';
+            
+            for (const component of addressComponents) {
+              if (component.types.includes('locality')) {
+                city = component.long_name;
+              }
+              if (component.types.includes('country')) {
+                country = component.short_name;
+              }
+            }
+            
+            setLocationName(city && country ? `${city}, ${country}` : data.results[0].formatted_address);
+          } else {
+            setLocationName(`${location.lat.toFixed(2)}, ${location.lng.toFixed(2)}`);
+          }
+        } else {
+          setLocationName(`${location.lat.toFixed(2)}, ${location.lng.toFixed(2)}`);
+        }
+      } catch (geoError) {
+        console.error('Error with geocoding:', geoError);
+        setLocationName(`${location.lat.toFixed(2)}, ${location.lng.toFixed(2)}`);
       }
     } catch (error) {
       console.error('Error fetching location:', error);
-      setLocationName('Location unavailable');
+      setLocationName('Location unavailable - Please enable location permissions');
     }
   };
 
@@ -78,10 +111,24 @@ export default function Profile() {
     }
   };
 
-  if (!user) {
+  if (loading) {
     return (
       <div className="p-8 flex items-center justify-center h-screen">
-        <p className="text-gray-500">Please log in to view your profile</p>
+        <p className="text-gray-500">Loading profile...</p>
+      </div>
+    );
+  }
+
+  if (!user || error) {
+    return (
+      <div className="p-8 flex items-center justify-center h-screen">
+        <div className="bg-red-50 border border-red-200 rounded-lg p-6 max-w-md">
+          <div className="flex items-center gap-3 mb-2">
+            <AlertCircle className="w-6 h-6 text-red-600" />
+            <h3 className="text-lg font-semibold text-red-800">Profile Error</h3>
+          </div>
+          <p className="text-red-700">{error || 'Please log in to view your profile'}</p>
+        </div>
       </div>
     );
   }
