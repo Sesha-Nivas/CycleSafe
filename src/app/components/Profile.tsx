@@ -2,9 +2,10 @@ import { useState, useEffect } from 'react';
 import { User, MapPin, Award, TrendingUp, Calendar, Target, RefreshCw, Camera, AlertCircle } from 'lucide-react';
 import { db } from '../../utils/database';
 import { getCurrentLocation } from '../../utils/rideTracking';
+import type { User as DbUser } from '../../utils/database';
 
 export default function Profile() {
-  const [user, setUser] = useState<typeof import('../../utils/database').User | null>(null);
+  const [user, setUser] = useState<DbUser | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [locationName, setLocationName] = useState('Loading...');
   const [loading, setLoading] = useState(true);
@@ -74,7 +75,7 @@ export default function Profile() {
         const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
         if (!apiKey) {
           console.warn('Google Maps API key not configured');
-          setLocationName(`${location.lat.toFixed(2)}, ${location.lng.toFixed(2)}`);
+          setLocationName('Location unavailable');
           return;
         }
         
@@ -84,12 +85,14 @@ export default function Profile() {
         
         if (response.ok) {
           const data = await response.json();
+          
           if (data.results && data.results.length > 0) {
-            // Get city and country from the results
+            // Try to extract city and country from address components
             const addressComponents = data.results[0].address_components;
             let city = '';
             let country = '';
-            
+            let state = '';
+
             for (const component of addressComponents) {
               if (component.types.includes('locality')) {
                 city = component.long_name;
@@ -97,22 +100,44 @@ export default function Profile() {
               if (component.types.includes('country')) {
                 country = component.short_name;
               }
+              if (component.types.includes('administrative_area_level_1')) {
+                state = component.short_name;
+              }
             }
-            
-            setLocationName(city && country ? `${city}, ${country}` : data.results[0].formatted_address);
+
+            // Build location name with fallback logic
+            if (city && country) {
+              setLocationName(`${city}, ${country}`);
+            } else if (city && state) {
+              setLocationName(`${city}, ${state}`);
+            } else if (city) {
+              setLocationName(city);
+            } else if (data.results[0].formatted_address) {
+              // Use formatted address if components not available
+              const formatted = data.results[0].formatted_address;
+              const parts = formatted.split(',').map((p: string) => p.trim());
+              // Get last 2 parts (usually city/area, country)
+              const lastParts = parts.slice(-2).join(', ');
+              setLocationName(lastParts || formatted);
+            } else {
+              setLocationName('Location found');
+            }
           } else {
-            setLocationName(`${location.lat.toFixed(2)}, ${location.lng.toFixed(2)}`);
+            setLocationName('Location unavailable');
           }
+        } else if (response.status === 403 || response.status === 401) {
+          console.error('Geocoding API key error');
+          setLocationName('Location unavailable');
         } else {
-          setLocationName(`${location.lat.toFixed(2)}, ${location.lng.toFixed(2)}`);
+          setLocationName('Location unavailable');
         }
       } catch (geoError) {
         console.error('Error with geocoding:', geoError);
-        setLocationName(`${location.lat.toFixed(2)}, ${location.lng.toFixed(2)}`);
+        setLocationName('Location unavailable');
       }
     } catch (error) {
       console.error('Error fetching location:', error);
-      setLocationName('Location unavailable - Please enable location permissions');
+      setLocationName('Location unavailable');
     }
   };
 
