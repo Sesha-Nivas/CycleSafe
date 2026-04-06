@@ -99,6 +99,16 @@ class Database {
     if (index !== -1) {
       users[index] = { ...users[index], ...updates };
       this.saveUsers(users);
+      
+      // Keep currentUser cache in sync if this is the logged-in user
+      const currentUser = this.getCurrentUser();
+      if (currentUser && currentUser.id === userId) {
+        this.setCurrentUser(users[index]);
+      }
+      
+      // Notify components that user data has been updated
+      window.dispatchEvent(new Event('userDataUpdated'));
+      
       return users[index];
     }
     return null;
@@ -107,6 +117,8 @@ class Database {
   // Current user operations
   setCurrentUser(user: User) {
     localStorage.setItem(this.getCurrentUserKey, JSON.stringify(user));
+    // Notify components of the change
+    window.dispatchEvent(new Event('userDataUpdated'));
   }
 
   getCurrentUser(): User | null {
@@ -126,6 +138,8 @@ class Database {
 
   saveRides(rides: Ride[]) {
     localStorage.setItem(this.getRidesKey, JSON.stringify(rides));
+    // Notify components that ride data has been updated
+    window.dispatchEvent(new Event('userDataUpdated'));
   }
 
   getUserRides(userId: string): Ride[] {

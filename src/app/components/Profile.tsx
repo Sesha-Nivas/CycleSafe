@@ -4,25 +4,61 @@ import { db } from '../../utils/database';
 import { getCurrentLocation } from '../../utils/rideTracking';
 
 export default function Profile() {
-  const [user, setUser] = useState(db.getCurrentUser());
+  const [user, setUser] = useState<typeof import('../../utils/database').User | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [locationName, setLocationName] = useState('Loading...');
-  const [loading, setLoading] = useState(!user);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
   useEffect(() => {
-    // Ensure user data is loaded
+    // Load fresh user data from database
+    loadUserData();
+    fetchCurrentLocation();
+
+    // Listen for changes in localStorage (when data is updated in another component)
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'cyclesafe_users' || e.key === 'cyclesafe_current_user') {
+        console.log('User data changed, reloading profile...');
+        loadUserData();
+      }
+    };
+
+    window.addEventListener('storage', handleStorageChange);
+    
+    // Also listen for custom events from other components
+    const handleCustomUpdate = () => {
+      console.log('Profile update event received');
+      loadUserData();
+    };
+    
+    window.addEventListener('userDataUpdated', handleCustomUpdate as EventListener);
+
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+      window.removeEventListener('userDataUpdated', handleCustomUpdate as EventListener);
+    };
+  }, []);
+
+  const loadUserData = () => {
     const currentUser = db.getCurrentUser();
     if (currentUser) {
-      setUser(currentUser);
-      setLoading(false);
+      // Get fresh data from main users array, not the cached currentUser
+      const freshUser = db.getUserById(currentUser.id);
+      if (freshUser) {
+        setUser(freshUser);
+        // Also update the currentUser cache to keep it in sync
+        db.setCurrentUser(freshUser);
+        setLoading(false);
+        setError('');
+      } else {
+        setError('User data not found. Please log in again.');
+        setLoading(false);
+      }
     } else {
       setError('User data not found. Please log in again.');
       setLoading(false);
     }
-    
-    fetchCurrentLocation();
-  }, []);
+  };
 
   const fetchCurrentLocation = async () => {
     try {
@@ -82,14 +118,7 @@ export default function Profile() {
 
   const handleRefresh = () => {
     setRefreshing(true);
-    const currentUser = db.getCurrentUser();
-    if (currentUser) {
-      const updatedUser = db.getUserById(currentUser.id);
-      if (updatedUser) {
-        setUser(updatedUser);
-        db.setCurrentUser(updatedUser);
-      }
-    }
+    loadUserData();
     fetchCurrentLocation();
     setTimeout(() => setRefreshing(false), 500);
   };
